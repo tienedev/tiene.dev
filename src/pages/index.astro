@@ -1,0 +1,83 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getCollection } from 'astro:content';
+import { slugOf } from '../lib/slug';
+import { readingTime } from '../lib/reading-time';
+import { fmtShortDate, fmtLongDate } from '../lib/date';
+import AnimatedLogo from '../components/AnimatedLogo.astro';
+
+const posts = (
+  await getCollection('blog', ({ data }) => data.locale === 'en' && !data.draft)
+).sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+const featured = posts.find((p) => p.data.featured) ?? null;
+const rest = featured ? posts.filter((p) => p.id !== featured.id) : posts;
+
+const byYear: Record<number, typeof rest> = {};
+for (const p of rest) {
+  const y = p.data.date.getFullYear();
+  (byYear[y] ??= []).push(p);
+}
+const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+---
+
+<Layout title="tiene.dev — technical notes" bare>
+  <section class="hero">
+    <h1 class="hero-identity">
+      <AnimatedLogo text="tiene.dev" animated />
+    </h1>
+    <p class="hero-role">
+      Independent developer. Writing about building with <em>AI</em> on a daily basis, falling down the
+      <em>NixOS</em> rabbit hole, and teaching myself robotics.
+    </p>
+  </section>
+
+  {featured && (
+    <section class="featured" aria-label="Featured article">
+      <h2 class="featured-title">
+        <a href={`/articles/${slugOf(featured.id)}`}>{featured.data.title}</a>
+      </h2>
+      <p class="featured-description">{featured.data.description}</p>
+      <div class="featured-meta">
+        <time datetime={featured.data.date.toISOString().slice(0, 10)}>
+          {fmtLongDate(featured.data.date)}
+        </time>
+        <span class="sep">·</span>
+        <span>{readingTime(featured.body)} min read</span>
+      </div>
+    </section>
+  )}
+
+  <section class="writing">
+
+    {years.map((year) => (
+      <div class="year-group">
+        <div class="year-header">{year}</div>
+        <ul class="post-list">
+          {byYear[year].map((post) => (
+            <li class="post-list-item">
+              <time class="post-date" datetime={post.data.date.toISOString().slice(0, 10)}>
+                {fmtShortDate(post.data.date)}
+              </time>
+              <div class="post-body">
+                <h3 class="post-title">
+                  <a href={`/articles/${slugOf(post.id)}`}>{post.data.title}</a>
+                </h3>
+                <p class="post-description">{post.data.description}</p>
+                <div class="post-meta">
+                  <span>{readingTime(post.body)} min</span>
+                  {post.data.tags.length > 0 && (
+                    <>
+                      <span class="sep">·</span>
+                      <span>{post.data.tags.join(' · ')}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))}
+  </section>
+</Layout>

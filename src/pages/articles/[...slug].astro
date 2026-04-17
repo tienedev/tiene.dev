@@ -1,0 +1,81 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getCollection, render } from 'astro:content';
+import { buildBlogPosting } from '../../lib/jsonld';
+import { slugOf } from '../../lib/slug';
+import { readingTime } from '../../lib/reading-time';
+import { fmtDate } from '../../lib/date';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => data.locale === 'en' && !data.draft);
+  const sorted = posts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+  return sorted.map((post, i) => {
+    const prev = sorted[i + 1];
+    const next = sorted[i - 1];
+    return {
+      params: { slug: slugOf(post.id) },
+      props: {
+        post,
+        prev: prev ? { slug: slugOf(prev.id), title: prev.data.title } : null,
+        next: next ? { slug: slugOf(next.id), title: next.data.title } : null,
+      },
+    };
+  });
+}
+
+const { post, prev, next } = Astro.props;
+const { Content } = await render(post);
+
+const minutes = readingTime(post.body);
+
+const canonical = new URL(`/articles/${Astro.params.slug}`, Astro.site!).toString();
+const ogImageUrl = new URL(`/og/${Astro.params.slug}.png`, Astro.site!).toString();
+const ld = buildBlogPosting({
+  title: post.data.title,
+  description: post.data.description,
+  url: canonical,
+  date: post.data.date,
+  image: ogImageUrl,
+  authorName: 'tienedev',
+});
+---
+
+<Layout
+  title={`${post.data.title} — tienedev`}
+  description={post.data.description}
+  ogImage={`/og/${Astro.params.slug}.png`}
+>
+  <script type="application/ld+json" set:html={JSON.stringify(ld)} is:inline></script>
+  <article class="prose">
+    <header class="article-header">
+      <h1 class="article-title">{post.data.title}</h1>
+      <div class="article-meta">
+        <time datetime={post.data.date.toISOString().slice(0, 10)}>
+          {fmtDate(post.data.date)}
+        </time>
+        <span class="sep">·</span>
+        <span>{minutes} min read</span>
+      </div>
+    </header>
+
+    <Content />
+  </article>
+
+  {(prev || next) && (
+    <nav class="article-nav" aria-label="Article navigation">
+      {prev ? (
+        <a href={`/articles/${prev.slug}`} class="article-nav-link prev" aria-label={`Previous article: ${prev.title}`}>
+          <span class="article-nav-label">Previous</span>
+          <span class="article-nav-title">{prev.title}</span>
+        </a>
+      ) : <span class="article-nav-placeholder" />}
+      {next ? (
+        <a href={`/articles/${next.slug}`} class="article-nav-link next" aria-label={`Next article: ${next.title}`}>
+          <span class="article-nav-label">Next</span>
+          <span class="article-nav-title">{next.title}</span>
+        </a>
+      ) : <span class="article-nav-placeholder" />}
+    </nav>
+  )}
+</Layout>

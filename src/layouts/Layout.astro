@@ -1,0 +1,77 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import '../styles/global.css';
+import '@fontsource-variable/inter/index.css';
+import CodeBlock from '../components/CodeBlock.astro';
+import AnimatedLogo from '../components/AnimatedLogo.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  bare?: boolean;
+  ogImage?: string; // absolute or site-relative
+}
+
+const {
+  title,
+  description = 'Technical notes and opinions from an independent developer.',
+  bare = false,
+  ogImage,
+} = Astro.props;
+
+const siteName = 'tiene.dev';
+const year = new Date().getFullYear();
+const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://tiene.dev').toString();
+const resolvedOg = new URL(ogImage ?? '/og/default.png', Astro.site ?? 'https://tiene.dev').toString();
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="application/rss+xml" title={siteName} href="/rss.xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:site_name" content={siteName} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={resolvedOg} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={resolvedOg} />
+    <meta name="color-scheme" content="light" />
+    <ClientRouter />
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <div class="page">
+      {!bare && (
+        <header class="site-header">
+          <a href="/" class="site-name" aria-label="Back home">
+            <AnimatedLogo text="tiene.dev" />
+          </a>
+        </header>
+      )}
+
+      <main id="main">
+        <slot />
+      </main>
+
+      <footer class="site-footer">
+        <span>© {year}</span>
+        <nav class="social-links" aria-label="External links">
+          <a href="https://x.com/tienedev" target="_blank" rel="me noopener">twitter</a>
+          <a href="https://github.com/tienedev" target="_blank" rel="me noopener">github</a>
+          <a href="mailto:tienedev@proton.me">mail</a>
+        </nav>
+      </footer>
+    </div>
+    <CodeBlock />
+  </body>
+</html>

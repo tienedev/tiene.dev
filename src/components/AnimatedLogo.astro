@@ -1,0 +1,125 @@
+---
+interface Props {
+  text?: string;
+  animated?: boolean;
+  class?: string;
+}
+const { text = "tiene.dev", animated = false, class: className = '' } = Astro.props;
+
+// 3x5 Pixel Font
+const font: Record<string, number[][]> = {
+  t: [[0,1,0],[1,1,1],[0,1,0],[0,1,0],[0,1,1]],
+  i: [[1],[0],[1],[1],[1]],
+  e: [[0,1,0],[1,0,1],[1,1,1],[1,0,0],[0,1,1]],
+  n: [[1,1,0],[1,0,1],[1,0,1],[1,0,1],[1,0,1]],
+  d: [[0,0,1],[0,0,1],[1,1,1],[1,0,1],[1,1,1]],
+  v: [[1,0,1],[1,0,1],[1,0,1],[1,0,1],[0,1,0]],
+  '.': [[0],[0],[0],[0],[1]]
+};
+
+const pixels: Array<{x: number, y: number, delay: string, color: string, randX: number}> = [];
+// Grayscale palette: Black to light gray
+const colors = [
+  '#000000', '#1A1A1A', '#333333', '#4D4D4D', 
+  '#666666', '#808080', '#999999', '#B3B3B3', '#CCCCCC', '#E6E6E6'
+];
+
+let currentX = 0;
+for (const char of text) {
+  const matrix = font[char];
+  if (!matrix) continue;
+  const width = matrix[0].length;
+  
+  for (let r = 0; r < 5; r++) {
+    for (let c = 0; c < width; c++) {
+      if (matrix[r][c] === 1) {
+        const x = currentX + c;
+        const y = r;
+        const colorIdx = (x * 3 + y * 7) % colors.length; 
+        
+        // Subdivide into 4 micro-pixels
+        [[0,0], [0.5,0], [0,0.5], [0.5,0.5]].forEach(([dx, dy], i) => {
+           pixels.push({ 
+             x: x + dx, 
+             y: y + dy, 
+             delay: `-${Math.random() * 2}s`, 
+             randX: Math.random() * 2 - 1, // -1 to +1
+             color: colors[(colorIdx + i*2) % colors.length] 
+           });
+        });
+      }
+    }
+  }
+  currentX += width + 1; // 1 macro-pixel space between letters
+}
+
+const totalWidth = currentX - 1;
+---
+
+<span class:list={['magical-pixel-logo', animated && 'logo-is-animated', className]} aria-label={text}>
+  <svg class="px-svg" viewBox={`0 0 ${totalWidth + 2} 7`} xmlns="http://www.w3.org/2000/svg">
+    {pixels.map(px => (
+      <rect 
+        class="px" 
+        style={`--delay: ${px.delay}; --color: ${px.color}; --rx: ${px.randX};`} 
+        x={px.x + 1} 
+        y={px.y + 1} 
+        width="0.45" 
+        height="0.45" 
+        rx="0.05"
+      />
+    ))}
+  </svg>
+</span>
+
+<style>
+  .magical-pixel-logo {
+    display: inline-flex;
+    align-items: center;
+    height: 1.2em; /* Scales roughly with text size */
+  }
+
+  /* Header sizing */
+  :global(.site-name) .magical-pixel-logo {
+    height: 14px;
+    margin-top: -2px;
+  }
+  
+  /* Hero sizing */
+  :global(.hero-identity) .magical-pixel-logo {
+    height: 48px;
+    margin-top: -4px;
+  }
+
+  .px-svg {
+    height: 100%;
+    width: auto;
+    overflow: visible;
+  }
+
+  /* Base state: Solid, perfectly readable, no noise */
+  .px {
+    fill: #1A1A1A; /* Solid dark color */
+    opacity: 1;
+    transform-origin: center;
+    transform-box: fill-box;
+    will-change: transform, opacity, fill;
+    transition: fill 0.2s ease, opacity 0.2s ease;
+  }
+
+  /* Hover state: VHS Glitch */
+  :global(.site-name:hover) .px,
+  :global(.hero-identity:hover) .px {
+    fill: var(--color);
+    animation: glitch-anim 0.35s infinite alternate steps(2, jump-none);
+    animation-delay: var(--delay);
+  }
+
+  @keyframes glitch-anim {
+    0% { transform: translateX(0); opacity: 1; }
+    30% { transform: translateX(calc(var(--rx) * 0.3px)); opacity: 0.85; }
+    60% { transform: translateX(calc(var(--rx) * -0.15px)); opacity: 1; }
+    90% { transform: translateX(calc(var(--rx) * 0.5px)); opacity: 0.75; }
+    100% { transform: translateX(0); opacity: 1; }
+  }
+</style>

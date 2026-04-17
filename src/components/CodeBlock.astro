@@ -1,0 +1,48 @@
+---
+// Inject this decoration script to add lang labels and copy logic to Shiki blocks.
+---
+
+<script>
+  const decorate = () => {
+    const blocks = document.querySelectorAll<HTMLPreElement>('pre.astro-code:not([data-enhanced])');
+    for (const pre of blocks) {
+      pre.setAttribute('data-enhanced', '');
+      const lang = pre.getAttribute('data-language') ?? '';
+
+      const chrome = document.createElement('div');
+      chrome.className = 'code-chrome';
+
+      if (lang) {
+        const label = document.createElement('span');
+        label.className = 'code-lang';
+        label.textContent = lang;
+        chrome.appendChild(label);
+      }
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'code-copy';
+      button.setAttribute('aria-label', 'Copy code to clipboard');
+      button.textContent = 'copy';
+      button.addEventListener('click', async () => {
+        const text = pre.querySelector('code')?.innerText ?? pre.innerText;
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = 'copied';
+          button.setAttribute('data-copied', '');
+          setTimeout(() => {
+            button.textContent = 'copy';
+            button.removeAttribute('data-copied');
+          }, 1400);
+        } catch (err) {
+          console.error('Failed to copy text:', err);
+        }
+      });
+      chrome.appendChild(button);
+      pre.prepend(chrome);
+    }
+  };
+
+  decorate();
+  document.addEventListener('astro:page-load', decorate);
+</script>
