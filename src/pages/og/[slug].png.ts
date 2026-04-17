@@ -42,7 +42,7 @@ export const GET: APIRoute = async ({ props }) => {
                   type: 'div',
                   props: { style: { width: '18px', height: '18px', background: '#3F3D39', borderRadius: '3px' } },
                 },
-                'tienedev',
+                'tiene.dev',
               ],
             },
           },
