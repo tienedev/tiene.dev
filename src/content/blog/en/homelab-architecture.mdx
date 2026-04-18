@@ -12,13 +12,11 @@ My old homelab was fragile. It started with good intentions and ended up as an o
 
 I wanted a proper, declarative way to manage my virtual machines and containers. Earlier this year, I found an article from [Nijho](https://www.nijho.lt/post/proxmox-to-nixos/) detailing a move from Proxmox to NixOS and Incus. As a heavy NixOS user, I spent some time digging into his solution to see if it fit my daily needs.
 
-Two months later, when the hardware finally arrived, I replaced the Pi with a dedicated [WTR PRO](https://aoostar.com/collections/nas-series/products/aoostar-wtr-pro-4-bay-90t-storage-amd-ryzen-7-5825u-nas-mini-pc-support-2-5-3-5-hdd-%E5%A4%8D%E5%88%B6). I'm running 32GB of RAM in single-channel. It's a massive bottleneck for the iGPU, but I'm not handing over 200€ to a broken market for a second stick. Engineering is about winning within constraints, not subsidizing retail insanity.
-
-Here is the blueprint for real resilience.
+When the hardware finally arrived, I replaced the Pi with a dedicated [WTR PRO](https://aoostar.com/collections/nas-series/products/aoostar-wtr-pro-4-bay-90t-storage-amd-ryzen-7-5825u-nas-mini-pc-support-2-5-3-5-hdd-%E5%A4%8D%E5%88%B6). I'm running 32GB of RAM in single-channel. It's a pain for the iGPU, but I'm not ready to spend 200€ for a second one.
 
 ## The Stack: Foundation, Engine, and Brain
 
-The golden rule is simple: **Zero application services run on the bare metal.** If you mix your host OS with your applications, you lose the ability to nuke and pave. Infrastructure must be modular. 
+The golden rule is simple: **Zero application services run on the bare metal.** If you mix your host OS with your applications, you lose the ability to nuke and pave. Infrastructure must be modular.
 
 I built the system on three strictly isolated pillars. No overlap, no host pollution.
 
@@ -26,13 +24,13 @@ I built the system on three strictly isolated pillars. No overlap, no host pollu
 
 **Incus is the engine.** While Docker manages processes, Incus manages systems. I use it to run LXC containers and KVM virtual machines with zero overhead. By hooking Incus directly into ZFS, I gain instant, copy-on-write snapshots. If an upgrade breaks a service, I am one command away from a total rollback.
 
-**OpenTofu is the brain.** Manual configuration is technical debt. Every container, network bridge, and proxy device is defined in [OpenTofu](https://opentofu.org/) (Terraform). The entire internal cloud is managed via declarative HCL files pushed through the Incus API. The code *is* the documentation.
+**OpenTofu is the brain.** Manual configuration is technical debt. Every container, network bridge, and proxy device is defined in [OpenTofu](https://opentofu.org/) (Terraform). The entire internal cloud is managed via declarative HCL files pushed through the Incus API. The code _is_ the documentation.
 
 ## The Pipeline: GitOps and Remote APIs
 
-Rsync is for amateurs. 
+Rsync is for amateurs.
 
-I use a proper GitOps pipeline. The NAS has its own GitHub deploy key. I push the code; the NAS pulls it and triggers the rebuild. Everything is versioned, audited, and immutable. 
+I use a proper GitOps pipeline. The NAS has its own GitHub deploy key. I push the code; the NAS pulls it and triggers the rebuild. Everything is versioned, audited, and immutable.
 
 For virtualization, OpenTofu communicates directly with the Incus API to provision the entire internal cloud. No web UI, no manual state. Just declarative orchestration from the shell.
 
@@ -40,22 +38,22 @@ For virtualization, OpenTofu communicates directly with the Incus API to provisi
 
 Internal networks are not an excuse for weak security.
 
-[Tailscale](https://tailscale.com/) handles the mesh, letting me access the stack from anywhere as if I were on the LAN. To secure the ingress, I generated a private Certificate Authority (CA) to sign wildcard certificates for my internal domain. 
+[Tailscale](https://tailscale.com/) handles the mesh, letting me access the stack from anywhere as if I were on the LAN. To secure the ingress, I generated a private Certificate Authority (CA) to sign wildcard certificates for my internal domain.
 
-Traffic hits a dedicated Traefik instance. There are no "insecure" warnings and no manual browser bypasses. Every internal tool runs on production-grade TLS. 
+Traffic hits a dedicated Traefik instance. There are no "insecure" warnings and no manual browser bypasses. Every internal tool runs on production-grade TLS.
 
 ## The Takeaway
 
 Code is disposable. State is sacred.
 
-This architecture requires effort. You have to write HCL, manage ZFS datasets, and handle deployment keys. But the reward is absolute control. When a system fails—and it will—there is no panic. 
+This architecture requires effort. You have to write HCL, manage ZFS datasets, and handle deployment keys. But the reward is absolute control. When a system fails—and it will—there is no panic.
 
 You just re-apply the state.
 
 ## The Machine-Readable Revolution
 
-The real payoff isn’t just control—it is absolute legibility. 
+The real payoff isn’t just control—it is absolute legibility.
 
-By codifying every intent, I’ve eliminated the "hidden state" that kills autonomous operations. This is no longer just a homelab; it is a machine-readable environment. When an AI can ingest your entire architectural intent in seconds, it transitions from a simple tool to an active, agentic operator. 
+By codifying every intent, I’ve eliminated the "hidden state" that kills autonomous operations. This is no longer just a homelab; it is a machine-readable environment. When an AI can ingest your entire architectural intent in seconds, it transitions from a simple tool to an active, agentic operator.
 
 I am no longer building for a human alone; I am building a system where the infrastructure finally explains itself to the agents that manage it.
