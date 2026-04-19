@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 
   /* Palette — VHS Monochrome */
   --bg: #FAFAFA;
@@ -29,6 +29,25 @@
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Consolas, Menlo, monospace;
 
   --measure: 42rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #050505;
+    --bg-subtle: #0F0F0F;
+    --text: #EEEEEE;
+    --text-muted: #888888;
+    --rule: #1F1F1F;
+    --accent: #FFFFFF;
+    --accent-hover: #AAAAAA;
+
+    --shiki-token-string: #999999;
+    --shiki-token-comment: #666666;
+    --shiki-token-keyword: #EEEEEE;
+    --shiki-token-function: #CCCCCC;
+    --shiki-token-string-expression: #999999;
+    --shiki-token-punctuation: #777777;
+  }
 }
 
 *, *::before, *::after {
