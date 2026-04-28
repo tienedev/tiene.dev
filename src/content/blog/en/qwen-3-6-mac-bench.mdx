@@ -1,0 +1,89 @@
+---
+title: "Qwen3.6-27B 4-bit on Apple Silicon"
+description: "Single-request and batched throughput, peak RAM, and context capacity for Qwen3.6-27B at 4-bit on a MacBook Pro M4 48 GB with oMLX."
+date: 2026-04-27
+locale: en
+translationKey: "qwen-3-6-mac-bench"
+tags: ["ai", "llm", "mlx", "apple-silicon", "qwen"]
+draft: false
+featured: false
+---
+
+Qwen3.6-27B at 4-bit on a MacBook Pro M4 48 GB: **9.8 t/s solo**, **26.9 t/s at 8× batching**, **25 GB peak RAM**. Full numbers below — single-request at three prompt sizes, continuous batching to 8×, and a capacity table for other Mac configs.
+
+## Setup
+
+```
+Machine     MacBook Pro M4, 48 GB unified memory
+Runtime     oMLX
+Model       Qwen3.6-27B (UD-MLX 4-bit)
+Prompts     pp1024 / pp4096 / pp8192, generation 128 tokens
+```
+
+[Qwen3.6-27B on Hugging Face](https://huggingface.co/Qwen/Qwen3.6-27B). [oMLX](https://github.com/jundot/omlx) as the inference runtime.
+
+## Single request
+
+```
+Test           TTFT (ms)   tg TPS   pp TPS    Peak RAM
+───────────────────────────────────────────────────────
+pp1024/tg128       8249      9.8    124.1     25.22 GB
+pp4096/tg128      31673      9.6    129.3     26.63 GB
+pp8192/tg128      64209      9.3    127.6     27.25 GB
+```
+
+tg TPS barely drops as the context grows (9.8 → 9.3 from 1K to 8K), and peak RAM rises in line with the KV cache. TTFT grows with the prompt — prefill is the slow part.
+
+## Continuous batching (pp1024 / tg128)
+
+```
+Batch    tg TPS    Speedup    pp TPS
+─────────────────────────────────────
+1×        9.8      1.00×      124.1
+2×       12.8      1.31×      125.9
+4×       20.0      2.04×      125.5
+8×       26.9      2.74×      124.5
+```
+
+At 8× concurrency, total throughput is 2.74× the single-request baseline, while prompt processing stays flat. If you run agents, evals, or anything concurrent, that's where the model earns its keep on a Mac.
+
+## Why bandwidth wins on Apple Silicon
+
+Apple Silicon is bandwidth-bound on inference, not compute-bound. Each token reads the full weights once through unified memory. Smaller weights move faster, so generation speeds up. That's why 4-bit is the working quant here. Prompt processing barely changes between quants — it's driven by KV math, not weight movement.
+
+## Context capacity
+
+The KV cache grows linearly with context length. I measured **~0.46 MB/token** at fp16. Base RAM at 4-bit is ~24.7 GB.
+
+Formula: `peak ≈ 24.7 GB + (tokens × 0.46 MB)`. Leave 3–4 GB for the OS.
+
+```
+Mac unified RAM    Max usable context
+──────────────────────────────────────
+32 GB              ~8K
+36 GB              ~16K
+48 GB              ~40K          ← this machine
+64 GB              ~80K
+96 GB              ~150K+
+128 GB             model cap
+```
+
+48 GB is the smallest Mac that runs this comfortably for solo work. 64 GB is the sweet spot.
+
+## Why 4-bit, not 6-bit?
+
+Quick check, since "more bits = better quality" is the easy assumption. Same machine, same prompts, 6-bit run for reference:
+
+```
+Metric              4-bit       6-bit       Δ
+───────────────────────────────────────────────
+Peak RAM (pp1024)   25.22 GB    29.24 GB    -14%
+tg TPS (solo)       9.8         8.2         +20%
+tg TPS (8× batch)   26.9        19.1        +41%
+```
+
+The gap grows under batching — the bandwidth advantage adds up as you run more requests at once. On coding tasks, I can't see a quality drop on the small evals I trust. Anyone telling you 4-bit "feels dumber" on this model owes you a benchmark.
+
+## The call
+
+4-bit Qwen3.6-27B is the working choice for solo Mac use. Plenty of headroom on 48 GB, batching that scales to 8×, usable contexts up to ~40K. Run it.

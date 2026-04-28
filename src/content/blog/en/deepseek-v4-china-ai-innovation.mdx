@@ -1,0 +1,65 @@
+---
+title: "When You Ban the H100, They Invent Compressed Attention"
+description: "Three open-weight releases in nine days from two Chinese labs. What the DeepSeek-V4 and Qwen3.6 configs actually do."
+date: 2026-04-25
+locale: en
+translationKey: "deepseek-v4-china-ai-innovation"
+tags: ["ai", "open-source", "china-tech", "machine-learning"]
+draft: false
+featured: false
+---
+
+Half a million Hugging Face downloads in 48 hours for [`deepseek-ai/DeepSeek-V4-Pro`](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro) — capping a nine-day run from two Chinese labs.
+
+## Three releases, nine days
+
+- **April 16** — [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) — sparse MoE, 3B parameters active per token
+- **April 22** — [Qwen3.6-27B](https://huggingface.co/Qwen/Qwen3.6-27B) — dense
+- **April 24** — [DeepSeek-V4-Pro](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro) — 1.6T parameters, 1M context
+
+H100 and A100 exports to China have been [banned since 2023](https://www.bis.gov/press-release/department-commerce-revises-license-review-policy-semiconductors-exported-china). When you can't import the GPUs, you optimize the algorithms. Hard to find reasons to thank Washington these days — but a chip ban that accidentally produced this much efficient open-weight work? I'll take it.
+
+## DeepSeek-V4: hybrid attention
+
+Quick frame, since the compression only makes sense if you know what's being compressed. A Transformer LLM is a stack of dozens of identical "attention layers". When the model generates the next token, every layer looks back at every previous token to decide what's relevant — and to do that quickly, it caches each token's *Key* and *Value* vectors. That's the **KV cache**. On a million-token context it is enormous, and at inference it dominates memory and bandwidth. Long-context efficiency lives or dies on how aggressively you can shrink it.
+
+DeepSeek-V4 ships two ways to shrink it, and runs them on different layers.
+
+**CSA — compressed sparse attention.** Compresses the KV cache 4× along the sequence dimension. A small "lightning indexer" then picks the top 1,024 compressed blocks per query, with a 128-token sliding window kept uncompressed for the most recent tokens. Precise, query-dependent lookups.
+
+**HCA — heavily compressed attention.** Compresses the KV cache 128× and drops sparse selection entirely. Every query attends densely to every compressed block — the compressed sequence is short enough that full dense attention over it stays cheap. Broad, long-range coverage.
+
+The `compress_ratios` array is the per-layer schedule. One entry per attention layer, in order, top of the stack to the bottom:
+
+```jsonc
+"compress_ratios": [
+  128,  // layer 0  → HCA (heavy compression)
+  128,  // layer 1  → HCA
+  4,    // layer 2  → CSA (light compression + sparse)
+  128,  // layer 3  → HCA
+  4,    // layer 4  → CSA
+  128,  // layer 5  → HCA
+  4,    // layer 6  → CSA
+  // ...alternates CSA / HCA all the way down
+]
+```
+
+`128` means "this layer's KV cache is squeezed 128× — it's an HCA layer". `4` means "compressed 4× and the indexer will pick the top 1,024 blocks — it's a CSA layer". V4-Pro opens with two HCA layers (a global-view bootstrap), then strict alternation: precise lookup, broad coverage, repeat — all the way to the bottom of the model.
+
+Net result on a 1M-token window: 27% of V3's FLOPs, KV cache down to roughly 10% of V3.2's footprint ([HF technical blog](https://huggingface.co/blog/deepseekv4)).
+
+![DeepSeek-V4 benchmark scores across knowledge, code, math, long context, and agentic tasks](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/resolve/main/assets/dsv4_performance.png)
+
+On TheArtificialQ's [Strix pentesting suite](https://theaq.blog/2026/04/25/deepseek-v4-with-strix-a-quick-test.html), V4-Pro logs 70.1/100 — their highest score outside an unreleased GPT-5.5. $26 per run for the Pro tier, $6.50 for Flash.
+
+## Qwen3.6-27B: the dense one
+
+Same setup, second frame. "Dense" only matters in contrast to **Mixture-of-Experts (MoE)**, the architecture most modern flagship models use. An MoE has hundreds of billions of parameters, but a small router picks just a few "experts" to fire per token — most of the model sits dormant on any given forward pass. Qwen's previous flagship, **397B-A17B**, is exactly that: 397 billion parameters total, only 17B active per token. A **dense** model is the opposite — every parameter runs for every token. More compute per parameter, simpler architecture, easier to fit on a single GPU at the small end.
+
+Qwen3.6-27B is dense. It clears 77.2% on SWE-bench Verified and beats the 397B-A17B MoE on coding ([benchmark table](https://www.marktechpost.com/2026/04/22/alibaba-qwen-team-releases-qwen3-6-27b-a-dense-open-weight-model-outperforming-397b-moe-on-agentic-coding-benchmarks/)). Twelve times fewer total parameters, all of them running every token — and better results on agentic coding tasks.
+
+I benched the dense 27B at 4-bit and 6-bit on Apple Silicon — peak RAM, tokens/sec, batching, context capacity in a [companion post](/articles/qwen-3-6-mac-bench/). MoE bench queued for the 35B-A3B once I free the disk for it.
+
+## What the ban produced
+
+No compressed attention without the chip ban. CSA and HCA exist because the GPUs you'd otherwise throw at the problem are illegal to import. Qwen pulling a 27B dense ahead of its own 397B MoE on coding is the same answer in different math — when you can't grow the hardware, you sharpen the algorithm. The constraint forced the technique. The technique now ships as open weights anyone, anywhere, can download.
