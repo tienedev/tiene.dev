@@ -20,27 +20,66 @@ The golden rule is simple: **Zero application services run on the bare metal.** 
 
 I built the system on three strictly isolated pillars. No overlap, no host pollution.
 
+<svg viewBox="0 0 600 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three-layer homelab architecture: OpenTofu declares state and pushes it through the Incus API, Incus runs LXC containers and KVM virtual machines, NixOS holds the bare metal, ZFS pool, and Incus daemon." style="max-width: 100%; height: auto; display: block; margin: 2rem auto;">
+  <title>Three-layer homelab architecture</title>
+  <style>{`
+    .label { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; fill: currentColor; }
+    .sub { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; fill: currentColor; opacity: 0.7; }
+    .role { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; fill: currentColor; opacity: 0.45; letter-spacing: 0.05em; }
+    .box { fill: none; stroke: currentColor; stroke-width: 1.5; }
+    .arrow { stroke: currentColor; stroke-width: 1.5; fill: none; }
+    .arrowhead { fill: currentColor; }
+  `}</style>
+
+  <rect class="box" x="80" y="20" width="440" height="80" />
+  <text class="label" x="100" y="52">OpenTofu</text>
+  <text class="role" x="500" y="52" text-anchor="end">BRAIN</text>
+  <text class="sub" x="100" y="78">declarative HCL · provisions Incus via API</text>
+
+  <line class="arrow" x1="300" y1="100" x2="300" y2="138" />
+  <polygon class="arrowhead" points="295,138 305,138 300,148" />
+
+  <rect class="box" x="80" y="150" width="440" height="80" />
+  <text class="label" x="100" y="182">Incus</text>
+  <text class="role" x="500" y="182" text-anchor="end">ENGINE</text>
+  <text class="sub" x="100" y="208">LXC containers + KVM VMs · ZFS-backed snapshots</text>
+
+  <line class="arrow" x1="300" y1="230" x2="300" y2="268" />
+  <polygon class="arrowhead" points="295,268 305,268 300,278" />
+
+  <rect class="box" x="80" y="280" width="440" height="80" />
+  <text class="label" x="100" y="312">NixOS</text>
+  <text class="role" x="500" y="312" text-anchor="end">FOUNDATION</text>
+  <text class="sub" x="100" y="338">bare metal · ZFS pool · Incus daemon · ~150 lines</text>
+</svg>
+
 **NixOS is the foundation.** It handles the bare metal, the ZFS pool, and the Incus daemon. That is it. A declarative `configuration.nix` of barely 150 lines defines the entire state. If the motherboard fails, I can provision identical bare-metal on new hardware in ten minutes using [nixos-anywhere](https://github.com/nix-community/nixos-anywhere).
 
 **Incus is the engine.** While Docker manages processes, Incus manages systems. I use it to run LXC containers and KVM virtual machines with zero overhead. By hooking Incus directly into ZFS, I gain instant, copy-on-write snapshots. If an upgrade breaks a service, I am one command away from a total rollback.
 
 **OpenTofu is the brain.** Manual configuration is technical debt. Every container, network bridge, and proxy device is defined in [OpenTofu](https://opentofu.org/) (Terraform). The entire internal cloud is managed via declarative HCL files pushed through the Incus API. The code _is_ the documentation.
 
-## The Pipeline: GitOps and Remote APIs
-
-Rsync is for amateurs.
-
-I use a proper GitOps pipeline. The NAS has its own GitHub deploy key. I push the code; the NAS pulls it and triggers the rebuild. Everything is versioned, audited, and immutable.
-
-For virtualization, OpenTofu communicates directly with the Incus API to provision the entire internal cloud. No web UI, no manual state. Just declarative orchestration from the shell.
-
 ## Security: Mesh and TLS
 
 Internal networks are not an excuse for weak security.
 
-[Tailscale](https://tailscale.com/) handles the mesh, letting me access the stack from anywhere as if I were on the LAN. To secure the ingress, I generated a private Certificate Authority (CA) to sign wildcard certificates for my internal domain.
+[Tailscale](https://tailscale.com/) handles the mesh, letting me access the stack from anywhere as if I were on the LAN. To secure the ingress, a dedicated [Traefik](https://traefik.io/) instance issues Let's Encrypt wildcard certificates against my own domain via ACME.
 
-Traffic hits a dedicated Traefik instance. There are no "insecure" warnings and no manual browser bypasses. Every internal tool runs on production-grade TLS.
+Services stay internal — never publicly exposed — but the certs are browser-trusted and rotate themselves. No private CA to push to every device, no "insecure" warnings, no manual bypasses.
+
+## State Protection: Snapshots, Replication, Alerts
+
+Snapshots are not backups, but they are the first line of defense.
+
+[Sanoid](https://github.com/jimsalterjrs/sanoid) takes hourly ZFS snapshots of `rpool/persistent` and `rpool/home` with 24h / 30d / 6mo retention. Syncoid replicates them every 30 minutes to a second pool on a separate HDD. [Restic](https://restic.net/) ships a smaller critical subset — Vaultwarden DB, OpenTofu secrets, Authelia configs — to [Backblaze B2](https://www.backblaze.com/cloud-storage), encrypted client-side. The 3-2-1 contract, declared in roughly 60 lines of Nix.
+
+What matters more is what happens when a job fails. A template systemd unit posts to a self-hosted [ntfy](https://ntfy.sh/) on every `OnFailure` from sanoid, syncoid, or restic:
+
+```nix
+systemd.services.sanoid.unitConfig.OnFailure = [ "failure-notify@%n.service" ];
+```
+
+Phone buzzes, runbook opens, no silent rot.
 
 ## The Takeaway
 
