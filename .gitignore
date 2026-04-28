@@ -1,6 +1,6 @@
-.env
 .astro/
+.claude
+.env
 .vscode/
 dist/
 node_modules/
-SOUL.md
