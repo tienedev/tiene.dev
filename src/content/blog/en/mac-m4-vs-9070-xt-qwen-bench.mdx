@@ -1,0 +1,80 @@
+---
+title: "Mac M4 vs RX 9070 XT — same Qwen, three numbers"
+description: "Qwen3.6-27B at Q4 on MacBook Pro M4 48 GB vs RX 9070 XT 16 GB. The GPU wins single-stream; the Mac scales 8× concurrent; MoE rewrites the math."
+date: 2026-04-30
+locale: en
+translationKey: "mac-m4-vs-9070-xt-qwen-bench"
+tags: ["ai", "llm", "mlx", "vulkan", "apple-silicon", "amd", "rdna4", "qwen", "benchmark"]
+draft: false
+featured: false
+---
+
+Same model, same quant tier, two machines, two completely different regimes. **Qwen3.6-27B at Q4** runs at **9.8 t/s** on a MacBook Pro M4 48 GB and **32.8 t/s** on an RX 9070 XT 16 GB — the GPU is **3.3× faster** in single-stream. But pile 8 concurrent requests on the Mac and total throughput climbs to **26.9 t/s**, while the GPU stays stuck on single-stream. And the 9070 XT pulls a card the Mac bench never played: **125 t/s on a 35B MoE**.
+
+Single user, GPU wins. Multi-user, Mac wins. MoE, GPU wins again — by a lot.
+
+## Setup
+
+```
+                MacBook Pro M4              RX 9070 XT
+─────────────────────────────────────────────────────────────────
+Memory          48 GB unified               16 GB GDDR6
+Runtime         oMLX                        llama.cpp Vulkan/RADV
+Quant           UD-MLX-4bit (Unsloth)       Q4_K_S (bartowski)
+Price           ≈ 2 700 €                   ≈ 600 € (GPU only)
+```
+
+Same model family ([Qwen3.6-27B](https://huggingface.co/Qwen)), same quant tier (4-bit), different runtimes. Mac numbers come from [the Qwen3.6 Mac bench](/articles/qwen-3-6-mac-bench/); 9070 XT runs llama.cpp build 8401 on NixOS unstable, kernel 6.19.9, mesa 26.0.3.
+
+## Single request — Qwen3.6-27B Q4
+
+```
+Metric                M4 48 GB     9070 XT 16 GB     Δ
+─────────────────────────────────────────────────────────
+tg128 (t/s)                9.8              32.8     +235%
+pp (t/s)                 124.1             971.0     +682%
+peak memory             25.2 GB           14.8 GB      —
+```
+
+In a one-user, one-prompt world, the 9070 XT wins outright. Both machines are memory-bound on inference; GDDR6 just moves bytes faster than M4 unified memory. Smaller and faster beats bigger and cooler when nothing else is fighting for the bus.
+
+(pp rates measured at different prompt lengths — 1024 on Mac, 512 on GPU. Treat the comparison as directional.)
+
+## Plot twist: the Mac scales
+
+Throw 8 concurrent prompts at the M4 and total throughput jumps from 9.8 to **26.9 t/s** — 2.74× scaling on a single machine, no extra hardware. The 9070 XT bench above is single-stream only; on a 16 GB card, the KV cache eats the VRAM headroom well before you reach 4× concurrency.
+
+```
+Concurrency       M4 48 GB (t/s)     9070 XT 16 GB (t/s)
+──────────────────────────────────────────────────────────
+1×                          9.8                    32.8
+8×                         26.9                      —    ← VRAM-limited
+```
+
+This is the architectural plot twist most reviewers miss. **Unified memory is the Mac's batching superpower**: KV cache and weights share the same 48 GB pool, so 8× context fits without spillover. A 16 GB GPU has no equivalent move. On aggregate t/s under load, the Mac closes most of the gap. For agents, evals, or any multi-tenant workload, that's the number that matters — not the single-stream headline.
+
+## Plot twist the other way: MoE rewrites the math
+
+Same GPU, swap the dense 35B for a Mixture-of-Experts 35B with ~3B active parameters per token, and the 9070 XT runs **125 t/s** — 3.8× the dense, on the same VRAM budget.
+
+```
+Model                            Size GB    tg128 (t/s)
+────────────────────────────────────────────────────────
+Qwen3.6-27B (dense)               14.76          32.8
+Qwen3.6-35B-A3B (MoE, ~3B act.)   15.45         125.4    ← 3.8× the dense
+gpt-oss-20B (MoE, ~3.6B active)   10.90         186.1    ← absurd
+```
+
+Compute is paid on the active subset (~3B params); only weight movement still has to load every expert from VRAM. The dense heuristic `tg128 ≈ 560 / size_GB` predicts ~36 t/s for a 15 GB model — the MoE blows through that ceiling by 3.5×.
+
+What it means in practice: a **16 GB GPU runs a 35B model at the speed of a 4B**. The Mac's 48 GB context advantage stops mattering when the GPU is 4× faster on the same MoE — and MLX can run MoE on Apple Silicon in theory, but the dense gap (3.3×) suggests it won't flip in MoE territory either.
+
+## The call
+
+Same Qwen, two regimes, plus one architectural unlock.
+
+- **Single-user, anything dense** → 9070 XT. 3.3× faster, ~4× cheaper. End of debate.
+- **Multi-user, batched workloads** → M4. Unified memory turns one Mac into eight. 8× concurrency, 26.9 t/s aggregate.
+- **MoE-first** → 9070 XT. The math the Mac doesn't have a benched answer for yet.
+
+The Mac is the better laptop and the better batch server. The 9070 XT is the better single-user box and the better MoE platform. They're for different jobs — pick the one that matches yours.
