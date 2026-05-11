@@ -1,0 +1,60 @@
+---
+title: "Eight agent frameworks, one task, one model"
+description: "An open benchmark of 8 LLM agent frameworks calling the same Gemini model on the same task with the same 4 tools. Pydantic-ai wins; CrewAI burns 7× the tokens for a worse score."
+date: 2026-05-11
+locale: en
+translationKey: "agent-frameworks-benchmark"
+tags: ["ai", "llm", "agents", "benchmark", "pydantic-ai", "langgraph", "crewai"]
+featured: false
+---
+
+CrewAI burns roughly **7× the input tokens** of pydantic-ai on the exact same task — and finishes #6 of 8. Pydantic-ai tops the board at NDCG@3 **0.857** with a clean 100% Hit@1. Vercel AI SDK runs the cheapest by 3×, then loses on justification quality. Same model, same tools, same prompt — the framework still moves the leaderboard by a 50% spread.
+
+[same-model-same-task](https://same-model-same-task.vercel.app/) is an open benchmark I built to settle one question. When every framework calls the same model through the same tools on the same prompt, does the framework actually move the needle — or is it glue code with a brand?
+
+## The setup
+
+```
+                 same-model-same-task
+─────────────────────────────────────────────────────────
+Model            gemini-2.5-flash
+Tools            4 (identical across frameworks)
+Task             candidate–job ranking
+Trials           30 per framework
+Frameworks       8 (5 Python · 3 TypeScript)
+Total runs       240
+Scoring          NDCG@3 · Hit@1 · LLM-judged JustifQ
+```
+
+Five Python contenders ([pydantic-ai](https://ai.pydantic.dev/), [LangGraph](https://langchain-ai.github.io/langgraph/), [CrewAI](https://www.crewai.com/), [Google ADK](https://google.github.io/adk-docs/), baseline-python) and three TypeScript ones ([Vercel AI SDK](https://sdk.vercel.ai/), [Mastra](https://mastra.ai/), baseline-typescript). NDCG@3 is the standard ranking score (0–1, higher is better): how well the agent's top-3 picks match the rule-based gold top-3. A separate LLM judge rates justification quality on a 5-point scale.
+
+## The leaderboard
+
+```
+#  Framework             NDCG@3   Hit@1   Tokens in/out    Cost/run
+───────────────────────────────────────────────────────────────────
+1  pydantic-ai (Py)       0.857  100.0%    6,149 /   480   $0.0181
+2  langgraph (Py)         0.823   92.6%    5,167 /   502   $0.0164
+3  vercel-ai-sdk (TS)     0.662   77.8%    1,605 /   228   $0.0060
+4  google-adk (Py)        0.621   72.4%    6,128 /   510   $0.0184
+5  mastra (TS)            0.610   73.3%    6,154 /   548   $0.0189
+6  crewai (Py)            0.598   69.2%   42,785 / 1,806   $0.1072
+7  baseline-typescript    0.589   69.0%    5,897 /   495   $0.0177
+8  baseline-python        0.570   65.2%    7,027 /   515   $0.0202
+```
+
+Two frameworks clear 0.80. The other six cluster between 0.57 and 0.66. The naked baselines finish last — frameworks do earn their keep, just not equally.
+
+## Where the framework actually shows up
+
+**Token mix.** CrewAI sends ~43k input tokens per run when the same task fits in 6k. Six times the bill for a worse score. The orchestrator's internal chatter — agent personas, role descriptions, planner-executor loops — leaks straight into the model context, and you pay for every round trip.
+
+**Latency tail.** Google ADK posts a clean p50 of 19.9s and a p95 of **471.8s**. Something in the framework hits a retry-or-stall cliff in the long tail that the others avoid. A median that looks fine can still hide a SLA bomb.
+
+**Justification quality.** Vercel AI SDK wins on cost by 3× but lands at 2.89/5 on justification — a short output budget (228 tokens) saves money and starves the reasoning. LangGraph posts the best 3.70/5 with 502 output tokens. You can buy cheaper answers; you cannot buy cheaper *good* answers.
+
+## The takeaway
+
+Same model, same tools, same prompt — and the framework controls a 50% spread on quality and an order-of-magnitude spread on cost. The boring conclusion holds: pydantic-ai and LangGraph are the safe bets. The interesting one is that "agent framework" is mostly a token-discipline contract dressed up as orchestration.
+
+Full methodology, per-framework drill-downs and raw runs at [same-model-same-task.vercel.app](https://same-model-same-task.vercel.app/).
