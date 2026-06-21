@@ -1,0 +1,61 @@
+---
+title: "When NVLink Actually Helps: llama.cpp vs vLLM on Dual RTX 3090"
+description: "Whether NVLink is worth anything comes down to how much your GPUs talk between layers. llama.cpp barely does; vLLM's tensor parallelism lives on it. Same two RTX 3090s, two very different bills."
+date: 2026-06-21
+locale: en
+translationKey: "dual-3090-vllm-vs-llamacpp"
+tags: ["ai", "llm", "vllm", "llama-cpp", "rtx-3090", "nvlink", "tensor-parallelism", "benchmark"]
+draft: false
+featured: false
+---
+
+Two [RTX 3090s](https://www.nvidia.com/en-us/geforce/graphics-cards/30-series/rtx-3090-3090ti/) can share a model two ways. One keeps the cards nearly silent with each other. The other makes them talk on every single layer. That difference — not the silicon — decides whether your [NVLink](https://www.nvidia.com/en-us/design-visualization/nvlink-bridges/) bridge is worth anything.
+
+![Two NVIDIA GeForce RTX 3090 GPUs mounted side by side in an open-frame build with Corsair Dominator DDR4 memory and AIO liquid cooling](/img/dual-rtx-3090-rig.jpg)
+
+## Two ways to split a model
+
+When a model spans two GPUs, the split strategy sets how much they communicate:
+
+- **Layer split** — GPU 0 holds the first half of the layers, GPU 1 the second. They exchange one set of activations at the handoff: a few MB per token. The bridge is mostly idle.
+- **Tensor parallelism (TP)** — every layer is cut across both cards. Each computes a slice, then they **all-reduce** to merge the result — every layer, every token. That is the heavy, constant cross-GPU traffic NVLink exists for.
+
+Same model, same cards. The communication bill differs by orders of magnitude.
+
+## llama.cpp — quiet, single-stream
+
+[llama.cpp](https://github.com/ggml-org/llama.cpp) defaults to layer split. `llama-bench`, [Qwen3.6-27B](https://huggingface.co/Qwen/Qwen3.6-27B) 4-bit, 512-token prompt → 128-token generation:
+
+```
+Config               pp512 (t/s)   tg128 (t/s)
+──────────────────────────────────────────────
+1× RTX 3090             1182          31.0
+2× RTX 3090 (layer)     1171          39.0
+2× RTX 3090 (row / TP)   263          23.9
+```
+
+Layer split adds ~26% generation over a single card — pure memory bandwidth, almost no chatter on the bridge. Force tensor split ("row") and it *collapses* to 24 t/s: llama.cpp pays the per-layer sync without a path built to absorb it. The all-reduce is only free when both the engine and the link are ready for it.
+
+## vLLM — loud, batched
+
+[vLLM](https://github.com/vllm-project/vllm) does TP properly, plus continuous batching. `TP=2`, same model, same 512→128:
+
+```
+Workload (TP=2)                Result
+────────────────────────────────────────
+Single request (512→128)       2.2 s
+200 concurrent requests        ~135 s
+Peak generation                ~760 tok/s
+```
+
+One request, it already edges llama.cpp — 2.2 s versus 3.7 s. Under load it is a different class: 200 requests in ~2 minutes against llama.cpp's ~12, because every layer's all-reduce rides the bridge instead of stalling the cards.
+
+## Where NVLink earns its keep
+
+This is the whole point. Layer split barely uses the interconnect, so NVLink does nothing for llama.cpp's fast path — pull the bridge and the numbers wouldn't move. Tensor parallelism hits it on every forward pass, and the 3090's NVLink (~112 GB/s) carries that traffic while bypassing the PCIe peer-to-peer block NVIDIA ships on consumer cards. Without it, the all-reduce falls back to slow host-staged copies — the same kind of cliff the "row" split hits above.
+
+NVLink is not a generic "make multi-GPU faster" upgrade. It is specific: it pays off the moment your engine runs per-layer all-reduce, and not a second before.
+
+## The call
+
+Match the bridge to the workload. Single-stream on llama.cpp never touches NVLink — save the slot. Tensor-parallel serving on vLLM lives on it. The cards were identical in every test; the only thing that changed was how much they had to talk between the layers.
