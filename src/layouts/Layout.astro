@@ -9,6 +9,7 @@ interface Props {
   title: string;
   description?: string;
   bare?: boolean;
+  splash?: boolean; // full-screen page: no header, no footer
   ogImage?: string; // absolute or site-relative
 }
 
@@ -16,6 +17,7 @@ const {
   title,
   description = 'Technical notes and opinions from an independent developer.',
   bare = false,
+  splash = false,
   ogImage,
 } = Astro.props;
 
@@ -34,7 +36,6 @@ const resolvedOg = new URL(ogImage ?? '/og/default.png', Astro.site ?? 'https://
     <title>{title}</title>
     <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="alternate" type="application/rss+xml" title={siteName} href="/rss.xml" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
@@ -49,6 +50,10 @@ const resolvedOg = new URL(ogImage ?? '/og/default.png', Astro.site ?? 'https://
     <ClientRouter />
   </head>
   <body>
+    {splash ? (
+      <main id="main"><slot /></main>
+    ) : (
+    <>
     <a href="#main" class="skip-link">Skip to content</a>
     <div class="page">
       {!bare && (
@@ -72,6 +77,8 @@ const resolvedOg = new URL(ogImage ?? '/og/default.png', Astro.site ?? 'https://
         </nav>
       </footer>
     </div>
+    </>
+    )}
     <CodeBlock />
   </body>
 </html>

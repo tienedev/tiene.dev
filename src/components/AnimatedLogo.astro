@@ -91,6 +91,15 @@ const totalWidth = currentX - 1;
     margin-top: -4px;
   }
 
+  /* Splash (full-screen home) sizing */
+  :global(.splash) .magical-pixel-logo {
+    height: auto;
+  }
+  :global(.splash) .px-svg {
+    width: min(80vw, 960px);
+    height: auto;
+  }
+
   .px-svg {
     height: 100%;
     width: auto;
@@ -109,7 +118,8 @@ const totalWidth = currentX - 1;
 
   /* Hover state: VHS Glitch */
   :global(.site-name:hover) .px,
-  :global(.hero-identity:hover) .px {
+  :global(.hero-identity:hover) .px,
+  :global(.splash h1:hover) .px {
     fill: var(--color);
     animation: glitch-anim 0.35s infinite alternate steps(2, jump-none);
     animation-delay: var(--delay);
